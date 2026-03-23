@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: leads
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 2-100 chars) - Full name
+    //   - email: string (required, valid email) - Email address
+    //   - company: string (required, 2-100 chars) - Company name
+    //   - phone: string (optional, 0-20 chars) - Phone number
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidLead(data) {
+      return hasOnlyAllowedFields(['name', 'email', 'company', 'phone', 'createdAt']) &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() <= 150 &&
+             data.company is string && data.company.size() >= 2 && data.company.size() <= 100 &&
+             isValidOptionalString('phone', 0, 20) &&
+             data.createdAt is timestamp &&
+             data.createdAt == request.time;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /leads/{leadId} {
+      // Allow anyone to submit a lead (public form) as long as it's valid
+      allow create: if isValidLead(request.resource.data);
+      
+      // Only admins can read or update leads (no admin role defined yet, so deny all)
+      allow read, update, delete: if false;
+    }
+  }
+}
